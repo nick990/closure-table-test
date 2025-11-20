@@ -63,6 +63,23 @@ namespace :closure_tree do
       root
     end
 
+    def print_node(node)
+      puts "="*80
+      puts "NODE\t#{node.name}"
+      puts "="*80
+      puts "ID: #{node.id}"
+      puts "Depth: #{node.depth}"
+      puts "Root: #{node.root.name}"
+      puts "Parent: #{node.parent.nil? ? 'nil' : node.parent.name}"
+      puts "Children: [ #{node.children.map(&:name).join(', ')} ]"
+      puts "Ancestors: [ #{node.ancestors.map(&:name).join(', ')} ]"
+      puts "Descendants: [ #{node.descendants.map(&:name).join(', ')} ]"
+      puts "Siblings: [ #{node.siblings.map(&:name).join(', ')} ]"
+      puts "Subtree:"
+      print_tree(node)
+      puts "="*80
+    end
+
     puts "\n" + "="*80
     puts "TEST CLOSURE_TREE"
     puts "="*80 + "\n"
@@ -72,11 +89,13 @@ namespace :closure_tree do
     puts "✓ Tutti i nodi cancellati"
 
 
-    nodes_number=30
-    generations=9
+    nodes_number=25
+    generations=7
     puts "Creo l'albero con #{nodes_number} nodi e #{generations} generazioni..."
     @root = create_tree(nodes_number, generations)
     puts "✓ Albero creato con successo:"
     print_tree(@root)
+
+    print_node(@root.descendants.sample)
   end
 end
