@@ -20,7 +20,7 @@ class BenchmarkResult
 end
 
 namespace :closure_tree do
-  desc "Testa la gemma closure_tree creando un albero e verificando i metodi di navigazione con misurazione dei tempi"
+  desc "Test the closure_tree gem by creating a tree and verifying the navigation methods with timing measurements. Parameters: nodes_number (default: 50), generations (default: 4)"
   task test: :environment do
     def print_tree(node, level = 0, is_last = true, prefix = "")
       if level == 0
@@ -122,8 +122,8 @@ namespace :closure_tree do
     puts "✓ All nodes deleted"
 
 
-    nodes_number=500
-    generations=20
+    nodes_number = (ENV["nodes_number"] || 50).to_i
+    generations = (ENV["generations"] || 4).to_i
     puts "Create tree with #{nodes_number} nodes and #{generations} generations..."
     @root = create_tree(nodes_number, generations)
     puts "✓ Tree created successfully:"
