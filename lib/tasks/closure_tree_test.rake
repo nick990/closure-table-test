@@ -1,18 +1,20 @@
 require "benchmark"
 
 class BenchmarkResult
-  attr_reader :node, :root_time, :self_and_descendants_time
+  attr_reader :node, :root_time, :self_and_descendants_time, :self_and_ancestors_time
 
   def initialize(node)
     @node = node
     @root_time = Benchmark.measure { node.root }.real*1000
     @self_and_descendants_time = Benchmark.measure { node.self_and_descendants }.real*1000
+    @self_and_ancestors_time = Benchmark.measure { node.self_and_ancestors }.real*1000
   end
 
   def to_s
     s="Nodo: #{node.name} (ID: #{node.id}, Depth: #{node.depth})\n"
     s+="\tTempo per trovare la root: #{root_time.round(3)} ms\n"
-    s+="\tTempo per trovare i discendenti: #{self_and_descendants_time.round(3)} ms"
+    s+="\tTempo per trovare i discendenti: #{self_and_descendants_time.round(3)} ms\n"
+    s+="\tTempo per trovare i predecessori: #{self_and_ancestors_time.round(3)} ms"
     s
   end
 end
@@ -109,7 +111,7 @@ namespace :closure_tree do
 
 
     nodes_number=300
-    generations=30
+    generations=10
     puts "Creo l'albero con #{nodes_number} nodi e #{generations} generazioni..."
     @root = create_tree(nodes_number, generations)
     puts "✓ Albero creato con successo:"
@@ -121,15 +123,18 @@ namespace :closure_tree do
     puts "Benchmark per il nodo più profondo:"
     deepest_node_benchmark_result = BenchmarkResult.new(deepest_node)
     puts deepest_node_benchmark_result
+    puts "-"*80
+
+    puts "Calcolo i benchmark per tutti i nodi..."
+    benchmark_results = []
+    @root.self_and_descendants.each_with_index do |node, index|
+      benchmark_results << BenchmarkResult.new(node)
+    end
+    puts "✓ Benchmark calcolati con successo"
 
     puts "\n" + "="*80
     puts "BENCHMARK: Tempi di ricerca root per tutti i nodi"
     puts "="*80
-    benchmark_results = []
-
-    @root.self_and_descendants.each_with_index do |node, index|
-      benchmark_results << BenchmarkResult.new(node)
-    end
     res_min = benchmark_results.min_by(&:root_time)
     puts "Tempo minimo: #{res_min.root_time.round(3)} ms\n\tNodo: #{res_min.node.name} (Depth: #{res_min.node.depth})"
     res_max = benchmark_results.max_by(&:root_time)
@@ -140,12 +145,20 @@ namespace :closure_tree do
 
     puts "BENCHMARK: Tempi di ricerca discendenti per tutti i nodi"
     puts "="*80
-
     res_min = benchmark_results.min_by(&:self_and_descendants_time)
     puts "Tempo minimo: #{res_min.self_and_descendants_time.round(3)} ms\n\tNodo: #{res_min.node.name} (Depth: #{res_min.node.depth})"
     res_max = benchmark_results.max_by(&:self_and_descendants_time)
     puts "Tempo massimo: #{res_max.self_and_descendants_time.round(3)} ms\n\tNodo: #{res_max.node.name} (Depth: #{res_max.node.depth})"
     puts "Tempo medio:  #{(benchmark_results.map(&:self_and_descendants_time).sum / benchmark_results.size).round(3)} ms"
+    puts "="*80
+
+    puts "BENCHMARK: Tempi di ricerca predecessori per tutti i nodi"
+    puts "="*80
+    res_min = benchmark_results.min_by(&:self_and_ancestors_time)
+    puts "Tempo minimo: #{res_min.self_and_ancestors_time.round(3)} ms\n\tNodo: #{res_min.node.name} (Depth: #{res_min.node.depth})"
+    res_max = benchmark_results.max_by(&:self_and_ancestors_time)
+    puts "Tempo massimo: #{res_max.self_and_ancestors_time.round(3)} ms\n\tNodo: #{res_max.node.name} (Depth: #{res_max.node.depth})"
+    puts "Tempo medio:  #{(benchmark_results.map(&:self_and_ancestors_time).sum / benchmark_results.size).round(3)} ms"
     puts "="*80
   end
 end
