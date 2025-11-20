@@ -35,7 +35,9 @@ namespace :closure_tree do
       flat_tree << root
       # Creo i nodi minimi per ogni generazione
       (generations).times do |i|
-        puts "#{index}/#{nodes_number}"
+        if index%100==0 || index==nodes_number
+          puts "#{index}/#{nodes_number}"
+        end
         new_node = Node.create!(name: "n#{index}")
         last_node.children << new_node
         last_node = new_node
@@ -46,7 +48,9 @@ namespace :closure_tree do
       end
       remaining_nodes=nodes_number-(generations+1)
       remaining_nodes.times do |i|
-        puts "#{index}/#{nodes_number}"
+        if index%100==0 || index==nodes_number
+          puts "#{index}/#{nodes_number}"
+        end
         new_node = Node.create!(name: "n#{index}")
         random_node = flat_tree.sample
         random_node.children << new_node
@@ -64,16 +68,15 @@ namespace :closure_tree do
     puts "="*80 + "\n"
 
     puts "Cancello tutti i nodi..."
-    Node.destroy_all
-    ActiveRecord::Base.connection.execute("ALTER SEQUENCE nodes_id_seq RESTART WITH 1")
+    ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
     puts "✓ Tutti i nodi cancellati"
 
 
-    nodes_number=1000
-    generations=15
+    nodes_number=30
+    generations=9
     puts "Creo l'albero con #{nodes_number} nodi e #{generations} generazioni..."
     @root = create_tree(nodes_number, generations)
+    puts "✓ Albero creato con successo:"
     print_tree(@root)
-    puts "✓ Albero creato con successo"
   end
 end
