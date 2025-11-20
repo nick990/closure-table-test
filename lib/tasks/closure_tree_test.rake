@@ -22,6 +22,30 @@ namespace :closure_tree do
       end
     end
 
+    def create_tree(nodes_number, generations)
+      if nodes_number < generations + 1
+        raise ArgumentError, "Il numero di nodi (#{nodes_number}) deve essere almeno #{generations + 1} per creare #{generations} generazioni"
+      end
+      root = Node.create!(name: "n1")
+      index=2
+      last_node=root
+      (generations).times do |i|
+        new_node = Node.create!(name: "n#{index}")
+        last_node.children << new_node
+        last_node = new_node
+        index += 1
+      end
+      nodes_number-=(generations+1)
+      nodes_number.times do |i|
+        new_node = Node.create!(name: "n#{index}")
+        all_nodes = root.self_and_descendants.to_a
+        random_node = all_nodes.sample
+        random_node.children << new_node
+        index += 1
+      end
+      root
+    end
+
     puts "\n" + "="*80
     puts "TEST CLOSURE_TREE"
     puts "="*80 + "\n"
@@ -33,17 +57,8 @@ namespace :closure_tree do
 
 
     puts "Creo l'albero..."
-    @n1 = Node.create!(name: "n1")
-    @n2 = @n1.children.create!(name: "n2")
-    @n3 = @n2.children.create!(name: "n3")
-    @n4 = @n1.children.create!(name: "n4")
-    @n5 = @n4.children.create!(name: "n5")
-    @n6 = @n4.children.create!(name: "n6")
-    @n7 = @n6.children.create!(name: "n7")
-    @n8 = @n5.children.create!(name: "n8")
-    @n9 = @n6.children.create!(name: "n9")
-    @n10 = @n5.children.create!(name: "n10")
+    @root = create_tree(500, 30)
+    print_tree(@root)
     puts "✓ Albero creato con successo"
-    print_tree(@n1)
   end
 end
