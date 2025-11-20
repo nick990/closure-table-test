@@ -26,23 +26,29 @@ namespace :closure_tree do
       if nodes_number < generations + 1
         raise ArgumentError, "Il numero di nodi (#{nodes_number}) deve essere almeno #{generations + 1} per creare #{generations} generazioni"
       end
-      root = Node.create!(name: "n1")
-      index=2
+      index=1
+      puts "#{index}/#{nodes_number}"
+      root = Node.create!(name: "n#{index}")
+      index += 1
       last_node=root
       (generations).times do |i|
+        puts "#{index}/#{nodes_number}"
         new_node = Node.create!(name: "n#{index}")
         last_node.children << new_node
         last_node = new_node
         index += 1
       end
-      nodes_number-=(generations+1)
-      nodes_number.times do |i|
+      remaining_nodes=nodes_number-(generations+1)
+      remaining_nodes.times do |i|
+        puts "#{index}/#{nodes_number}"
         new_node = Node.create!(name: "n#{index}")
-        all_nodes = root.self_and_descendants.to_a
+        root.reload
+        all_nodes = root.self_and_descendants.select { |node| node.depth < generations }.to_a
         random_node = all_nodes.sample
         random_node.children << new_node
         index += 1
       end
+      root.reload
       root
     end
 
@@ -56,8 +62,10 @@ namespace :closure_tree do
     puts "✓ Tutti i nodi cancellati"
 
 
-    puts "Creo l'albero..."
-    @root = create_tree(500, 30)
+    nodes_number=200
+    generations=7
+    puts "Creo l'albero con #{nodes_number} nodi e #{generations} generazioni..."
+    @root = create_tree(nodes_number, generations)
     print_tree(@root)
     puts "✓ Albero creato con successo"
   end
