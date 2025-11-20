@@ -31,22 +31,29 @@ namespace :closure_tree do
       root = Node.create!(name: "n#{index}")
       index += 1
       last_node=root
+      flat_tree=[]
+      flat_tree << root
+      # Creo i nodi minimi per ogni generazione
       (generations).times do |i|
         puts "#{index}/#{nodes_number}"
         new_node = Node.create!(name: "n#{index}")
         last_node.children << new_node
         last_node = new_node
         index += 1
+        if new_node.depth < generations
+          flat_tree << new_node
+        end
       end
       remaining_nodes=nodes_number-(generations+1)
       remaining_nodes.times do |i|
         puts "#{index}/#{nodes_number}"
         new_node = Node.create!(name: "n#{index}")
-        root.reload
-        all_nodes = root.self_and_descendants.select { |node| node.depth < generations }.to_a
-        random_node = all_nodes.sample
+        random_node = flat_tree.sample
         random_node.children << new_node
         index += 1
+        if new_node.depth < generations
+          flat_tree << new_node
+        end
       end
       root.reload
       root
@@ -62,8 +69,8 @@ namespace :closure_tree do
     puts "✓ Tutti i nodi cancellati"
 
 
-    nodes_number=200
-    generations=7
+    nodes_number=1000
+    generations=15
     puts "Creo l'albero con #{nodes_number} nodi e #{generations} generazioni..."
     @root = create_tree(nodes_number, generations)
     print_tree(@root)
