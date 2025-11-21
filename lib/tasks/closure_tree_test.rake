@@ -19,7 +19,7 @@ class BenchmarkResult
   end
 end
 
-class BenchmarkResultsSet < Array
+class BenchmarkResultsAggregate < Array
   attr_reader :nodes_number, :generations, :delete_time
 
   def initialize(nodes_number, generations, *args)
@@ -62,17 +62,17 @@ class BenchmarkResultsSet < Array
     [
       nodes_number,
       generations,
-      average_time(:root_time).round(3),
-      min_time(:root_time).send(:root_time).round(3),
-      max_time(:root_time).send(:root_time).round(3),
-      average_time(:self_and_descendants_time).round(3),
-      min_time(:self_and_descendants_time).send(:self_and_descendants_time).round(3),
-      max_time(:self_and_descendants_time).send(:self_and_descendants_time).round(3),
-      average_time(:self_and_ancestors_time).round(3),
-      min_time(:self_and_ancestors_time).send(:self_and_ancestors_time).round(3),
-      max_time(:self_and_ancestors_time).send(:self_and_ancestors_time).round(3),
-      delete_time ? delete_time.round(3) : ""
-    ].join(",")
+      average_time(:root_time).round(3).to_s.gsub(".", ","),
+      min_time(:root_time).send(:root_time).round(3).to_s.gsub(".", ","),
+      max_time(:root_time).send(:root_time).round(3).to_s.gsub(".", ","),
+      average_time(:self_and_descendants_time).round(3).to_s.gsub(".", ","),
+      min_time(:self_and_descendants_time).send(:self_and_descendants_time).round(3).to_s.gsub(".", ","),
+      max_time(:self_and_descendants_time).send(:self_and_descendants_time).round(3).to_s.gsub(".", ","),
+      average_time(:self_and_ancestors_time).round(3).to_s.gsub(".", ","),
+      min_time(:self_and_ancestors_time).send(:self_and_ancestors_time).round(3).to_s.gsub(".", ","),
+      max_time(:self_and_ancestors_time).send(:self_and_ancestors_time).round(3).to_s.gsub(".", ","),
+      delete_time ? delete_time.round(3).to_s.gsub(".", ",") : ""
+    ].join(";")
   end
 end
 
@@ -93,7 +93,7 @@ namespace :closure_tree do
         "self_and_ancestors_min_ms",
         "self_and_ancestors_max_ms",
         "delete_time_ms"
-      ].join(",")
+      ].join(";")
     end
     def print_tree(node, level = 0, is_last = true, prefix = "")
       if level == 0
@@ -174,6 +174,11 @@ namespace :closure_tree do
       puts "="*80
     end
 
+    # Crea un albero dato numero nodo e generazioni
+    # Calcola il benchmark per il nodo più profondo
+    # Calcola il benchmark per tutti i nodi
+    # Elimina l'albero
+    # Torna un oggetto BenchmarkResultsAggregate
     def test_tree(nodes_number, generations)
       puts "Create tree with #{nodes_number} nodes and #{generations} generations..."
       @root = create_tree(nodes_number, generations)
@@ -189,22 +194,22 @@ namespace :closure_tree do
       puts "-"*80
 
       puts "Calculate benchmark for all nodes..."
-      benchmark_results_set = BenchmarkResultsSet.new(nodes_number, generations)
+      benchmark_results_aggregate = BenchmarkResultsAggregate.new(nodes_number, generations)
       @root.self_and_descendants.each_with_index do |node, index|
-        benchmark_results_set << BenchmarkResult.new(node)
+        benchmark_results_aggregate << BenchmarkResult.new(node)
       end
       puts "✓ Benchmark calculated successfully"
 
-      benchmark_results_set.print_stats("root", :root_time)
-      benchmark_results_set.print_stats("self_and_descendants", :self_and_descendants_time)
-      benchmark_results_set.print_stats("self_and_ancestors", :self_and_ancestors_time)
+      benchmark_results_aggregate.print_stats("root", :root_time)
+      benchmark_results_aggregate.print_stats("self_and_descendants", :self_and_descendants_time)
+      benchmark_results_aggregate.print_stats("self_and_ancestors", :self_and_ancestors_time)
 
       puts "Delete tree..."
       destroy_time = Benchmark.measure { @root.destroy }.real*1000
       puts "✓ Tree deleted in #{(destroy_time).round(3)} ms"
-      benchmark_results_set.delete_time = destroy_time
+      benchmark_results_aggregate.delete_time = destroy_time
 
-      benchmark_results_set
+      benchmark_results_aggregate
     end
 
 
@@ -212,21 +217,21 @@ namespace :closure_tree do
     puts "TEST CLOSURE_TREE"
     puts "="*80 + "\n"
 
-    @benchmark_results = []
-    for nodes_number in [ 10, 50, 100, 500, 1000, 5000 ]
-      for generations in [ 2, 5, 10, 20, 50, 100, 200 ]
+    @benchmark_results_aggregate_global = []
+    for nodes_number in [ 10, 500 ]
+      for generations in [ 2, 5, 10 ]
         if generations > nodes_number-1
           next
         end
-        benchmark_results_set = test_tree(nodes_number, generations)
-        @benchmark_results << benchmark_results_set
+        benchmark_results_aggregate = test_tree(nodes_number, generations)
+        @benchmark_results_aggregate_global << benchmark_results_aggregate
       end
     end
 
     puts "Export results to CSV..."
     File.open("closure_tree_test_results.csv", "w") do |file|
       file.write(csv_header + "\n")
-      @benchmark_results.each do |result|
+      @benchmark_results_aggregate_global.each do |result|
         file.write(result.to_csv + "\n")
       end
     end
@@ -235,9 +240,5 @@ namespace :closure_tree do
     puts "Delete all nodes..."
     ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
     puts "✓ All nodes deleted"
-
-
-    # nodes_number = (ENV["nodes_number"] || 50).to_i
-    # generations = (ENV["generations"] || 4).to_i
   end
 end
