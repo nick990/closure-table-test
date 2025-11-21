@@ -19,9 +19,82 @@ class BenchmarkResult
   end
 end
 
+class BenchmarkResultsSet < Array
+  attr_reader :nodes_number, :generations, :delete_time
+
+  def initialize(nodes_number, generations, *args)
+    super(*args)
+    @nodes_number = nodes_number
+    @generations = generations
+    @delete_time = nil
+  end
+
+  def delete_time=(time)
+    @delete_time = time
+  end
+
+  def min_time(metric)
+    min_by { |r| r.send(metric) }
+  end
+
+  def max_time(metric)
+    max_by { |r| r.send(metric) }
+  end
+
+  def average_time(metric)
+    return 0.0 if empty?
+    map { |r| r.send(metric) }.sum / size
+  end
+
+  def print_stats(title, metric)
+    puts "\n" + "="*80
+    puts "BENCHMARK: #{title}"
+    puts "="*80
+    res_min = min_time(metric)
+    puts "Min time: #{res_min.send(metric).round(3)} ms\n\t└─ Node: #{res_min.node.name} (Depth: #{res_min.node.depth})"
+    res_max = max_time(metric)
+    puts "Max time: #{res_max.send(metric).round(3)} ms\n\t└─ Node: #{res_max.node.name} (Depth: #{res_max.node.depth})"
+    puts "Average time:  #{average_time(metric).round(3)} ms"
+    puts "="*80
+  end
+
+  def to_csv
+    [
+      nodes_number,
+      generations,
+      average_time(:root_time).round(3),
+      min_time(:root_time).send(:root_time).round(3),
+      max_time(:root_time).send(:root_time).round(3),
+      average_time(:self_and_descendants_time).round(3),
+      min_time(:self_and_descendants_time).send(:self_and_descendants_time).round(3),
+      max_time(:self_and_descendants_time).send(:self_and_descendants_time).round(3),
+      average_time(:self_and_ancestors_time).round(3),
+      min_time(:self_and_ancestors_time).send(:self_and_ancestors_time).round(3),
+      max_time(:self_and_ancestors_time).send(:self_and_ancestors_time).round(3),
+      delete_time ? delete_time.round(3) : ""
+    ].join(",")
+  end
+end
+
 namespace :closure_tree do
   desc "Test the closure_tree gem by creating a tree and verifying the navigation methods with timing measurements. Parameters: nodes_number (default: 50), generations (default: 4)"
   task test: :environment do
+    def csv_header
+      [
+        "nodes_number",
+        "generations",
+        "root_avg_ms",
+        "root_min_ms",
+        "root_max_ms",
+        "self_and_descendants_avg_ms",
+        "self_and_descendants_min_ms",
+        "self_and_descendants_max_ms",
+        "self_and_ancestors_avg_ms",
+        "self_and_ancestors_min_ms",
+        "self_and_ancestors_max_ms",
+        "delete_time_ms"
+      ].join(",")
+    end
     def print_tree(node, level = 0, is_last = true, prefix = "")
       if level == 0
         puts node.name
@@ -101,55 +174,70 @@ namespace :closure_tree do
       puts "="*80
     end
 
-    def print_benchmark_stats(title, metric, benchmark_results)
-      puts "\n" + "="*80
-      puts "BENCHMARK: #{title}"
-      puts "="*80
-      res_min = benchmark_results.min_by { |r| r.send(metric) }
-      puts "Min time: #{res_min.send(metric).round(3)} ms\n\t└─ Node: #{res_min.node.name} (Depth: #{res_min.node.depth})"
-      res_max = benchmark_results.max_by { |r| r.send(metric) }
-      puts "Max time: #{res_max.send(metric).round(3)} ms\n\t└─ Node: #{res_max.node.name} (Depth: #{res_max.node.depth})"
-      puts "Average time:  #{(benchmark_results.map { |r| r.send(metric) }.sum / benchmark_results.size).round(3)} ms"
-      puts "="*80
+    def test_tree(nodes_number, generations)
+      puts "Create tree with #{nodes_number} nodes and #{generations} generations..."
+      @root = create_tree(nodes_number, generations)
+      puts "✓ Tree created successfully:"
+      print_tree(@root)
+
+      puts "Deepest node:"
+      deepest_node = @root.descendants.max_by(&:depth)
+      print_node(deepest_node)
+      puts "Benchmark for deepest node:"
+      deepest_node_benchmark_result = BenchmarkResult.new(deepest_node)
+      puts deepest_node_benchmark_result
+      puts "-"*80
+
+      puts "Calculate benchmark for all nodes..."
+      benchmark_results_set = BenchmarkResultsSet.new(nodes_number, generations)
+      @root.self_and_descendants.each_with_index do |node, index|
+        benchmark_results_set << BenchmarkResult.new(node)
+      end
+      puts "✓ Benchmark calculated successfully"
+
+      benchmark_results_set.print_stats("root", :root_time)
+      benchmark_results_set.print_stats("self_and_descendants", :self_and_descendants_time)
+      benchmark_results_set.print_stats("self_and_ancestors", :self_and_ancestors_time)
+
+      puts "Delete tree..."
+      destroy_time = Benchmark.measure { @root.destroy }.real*1000
+      puts "✓ Tree deleted in #{(destroy_time).round(3)} ms"
+      benchmark_results_set.delete_time = destroy_time
+
+      benchmark_results_set
     end
+
 
     puts "\n" + "="*80
     puts "TEST CLOSURE_TREE"
     puts "="*80 + "\n"
+
+    @benchmark_results = []
+    for nodes_number in [ 10, 50, 100, 500, 1000, 5000 ]
+      for generations in [ 2, 5, 10, 20, 50, 100, 200 ]
+        if generations > nodes_number-1
+          next
+        end
+        benchmark_results_set = test_tree(nodes_number, generations)
+        @benchmark_results << benchmark_results_set
+      end
+    end
+
+    puts "Export results to CSV..."
+    File.open("closure_tree_test_results.csv", "w") do |file|
+      file.write(csv_header + "\n")
+      @benchmark_results.each do |result|
+        file.write(result.to_csv + "\n")
+      end
+    end
+    puts "✓ Results exported to closure_tree_test_results.csv"
 
     puts "Delete all nodes..."
     ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
     puts "✓ All nodes deleted"
 
 
-    nodes_number = (ENV["nodes_number"] || 50).to_i
-    generations = (ENV["generations"] || 4).to_i
-    puts "Create tree with #{nodes_number} nodes and #{generations} generations..."
-    @root = create_tree(nodes_number, generations)
-    puts "✓ Tree created successfully:"
-    print_tree(@root)
-
-    puts "Deepest node:"
-    deepest_node = @root.descendants.max_by(&:depth)
-    print_node(deepest_node)
-    puts "Benchmark for deepest node:"
-    deepest_node_benchmark_result = BenchmarkResult.new(deepest_node)
-    puts deepest_node_benchmark_result
-    puts "-"*80
-
-    puts "Calculate benchmark for all nodes..."
-    benchmark_results = []
-    @root.self_and_descendants.each_with_index do |node, index|
-      benchmark_results << BenchmarkResult.new(node)
-    end
-    puts "✓ Benchmark calculated successfully"
-
-    print_benchmark_stats("root", :root_time, benchmark_results)
-    print_benchmark_stats("self_and_descendants", :self_and_descendants_time, benchmark_results)
-    print_benchmark_stats("self_and_ancestors", :self_and_ancestors_time, benchmark_results)
-
-    puts "Delete tree..."
-    destroy_time = Benchmark.measure { @root.destroy }.real
-    puts "✓ Tree deleted in #{destroy_time.round(3)} seconds"
+    # nodes_number = (ENV["nodes_number"] || 50).to_i
+    # generations = (ENV["generations"] || 4).to_i
   end
 end
