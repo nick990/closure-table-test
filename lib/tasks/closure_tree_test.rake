@@ -20,12 +20,13 @@ class BenchmarkResult
 end
 
 class BenchmarkResultsAggregate < Array
-  attr_reader :nodes_number, :generations, :delete_time
+  attr_reader :nodes_number, :generations, :closure_table_size, :delete_time
 
-  def initialize(nodes_number, generations, *args)
+  def initialize(nodes_number, generations, closure_table_size, *args)
     super(*args)
     @nodes_number = nodes_number
     @generations = generations
+    @closure_table_size = closure_table_size
     @delete_time = nil
   end
 
@@ -62,6 +63,7 @@ class BenchmarkResultsAggregate < Array
     [
       nodes_number,
       generations,
+      closure_table_size,
       average_time(:root_time).round(3).to_s.gsub(".", ","),
       min_time(:root_time).send(:root_time).round(3).to_s.gsub(".", ","),
       max_time(:root_time).send(:root_time).round(3).to_s.gsub(".", ","),
@@ -83,6 +85,7 @@ namespace :closure_tree do
       [
         "nodes_number",
         "generations",
+        "closure_table_size",
         "root_avg_ms",
         "root_min_ms",
         "root_max_ms",
@@ -185,6 +188,7 @@ namespace :closure_tree do
       puts "✓ Tree created successfully:"
       print_tree(@root)
 
+
       puts "Deepest node:"
       deepest_node = @root.descendants.max_by(&:depth)
       print_node(deepest_node)
@@ -194,7 +198,9 @@ namespace :closure_tree do
       puts "-"*80
 
       puts "Calculate benchmark for all nodes..."
-      benchmark_results_aggregate = BenchmarkResultsAggregate.new(nodes_number, generations)
+      @closure_table_size = ActiveRecord::Base.connection.execute("SELECT COUNT(*) FROM node_hierarchies").first["count"].to_i
+      puts "Closure table size: #{@closure_table_size}"
+      benchmark_results_aggregate = BenchmarkResultsAggregate.new(nodes_number, generations, @closure_table_size)
       @root.self_and_descendants.each_with_index do |node, index|
         benchmark_results_aggregate << BenchmarkResult.new(node)
       end
