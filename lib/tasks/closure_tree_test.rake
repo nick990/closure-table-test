@@ -78,6 +78,61 @@ class BenchmarkResultsAggregate < Array
   end
 end
 
+class BenchmarkCreationResult
+  attr_reader :nodes_number, :closure_table_size, :creation_time
+
+  def initialize(nodes_number, closure_table_size, creation_time)
+    @nodes_number = nodes_number
+    @closure_table_size = closure_table_size
+    @creation_time = creation_time
+  end
+  def to_csv
+    [
+      nodes_number,
+      closure_table_size,
+      creation_time.round(3).to_s.gsub(".", ",")
+    ].join(";")
+  end
+end
+
+def print_tree(node, level = 0, is_last = true, prefix = "")
+  if level == 0
+    puts node.name
+  else
+    puts prefix + "└─ #{node.name}"
+  end
+
+  children = node.children.to_a
+  children.each_with_index do |child, index|
+    is_last_child = index == children.size - 1
+    child_prefix = if level == 0
+      ""
+    elsif is_last
+      prefix + "   "
+    else
+      prefix + "|  "
+    end
+    print_tree(child, level + 1, is_last_child, child_prefix)
+  end
+end
+
+def print_node(node)
+  puts "="*80
+  puts "NODE\t#{node.name}"
+  puts "="*80
+  puts "ID: #{node.id}"
+  puts "Depth: #{node.depth}"
+  puts "Root: #{node.root.name}"
+  puts "Parent: #{node.parent.nil? ? 'nil' : node.parent.name}"
+  puts "Children: [ #{node.children.map(&:name).join(', ')} ]"
+  puts "Ancestors: [ #{node.ancestors.map(&:name).join(', ')} ]"
+  puts "Descendants: [ #{node.descendants.map(&:name).join(', ')} ]"
+  puts "Siblings: [ #{node.siblings.map(&:name).join(', ')} ]"
+  puts "Subtree:"
+  print_tree(node)
+  puts "="*80
+end
+
 namespace :closure_tree do
   desc "Test the closure_tree gem by creating a tree and verifying the navigation methods with timing measurements. Parameters: nodes_number (default: 50), generations (default: 4)"
   task test: :environment do
@@ -97,26 +152,6 @@ namespace :closure_tree do
         "self_and_ancestors_max_ms",
         "delete_time_ms"
       ].join(";")
-    end
-    def print_tree(node, level = 0, is_last = true, prefix = "")
-      if level == 0
-        puts node.name
-      else
-        puts prefix + "└─ #{node.name}"
-      end
-
-      children = node.children.to_a
-      children.each_with_index do |child, index|
-        is_last_child = index == children.size - 1
-        child_prefix = if level == 0
-          ""
-        elsif is_last
-          prefix + "   "
-        else
-          prefix + "|  "
-        end
-        print_tree(child, level + 1, is_last_child, child_prefix)
-      end
     end
 
     def create_tree(nodes_number, generations)
@@ -160,22 +195,6 @@ namespace :closure_tree do
       root
     end
 
-    def print_node(node)
-      puts "="*80
-      puts "NODE\t#{node.name}"
-      puts "="*80
-      puts "ID: #{node.id}"
-      puts "Depth: #{node.depth}"
-      puts "Root: #{node.root.name}"
-      puts "Parent: #{node.parent.nil? ? 'nil' : node.parent.name}"
-      puts "Children: [ #{node.children.map(&:name).join(', ')} ]"
-      puts "Ancestors: [ #{node.ancestors.map(&:name).join(', ')} ]"
-      puts "Descendants: [ #{node.descendants.map(&:name).join(', ')} ]"
-      puts "Siblings: [ #{node.siblings.map(&:name).join(', ')} ]"
-      puts "Subtree:"
-      print_tree(node)
-      puts "="*80
-    end
 
     # Crea un albero dato numero nodo e generazioni
     # Calcola il benchmark per il nodo più profondo
@@ -224,7 +243,7 @@ namespace :closure_tree do
     puts "="*80 + "\n"
 
     @benchmark_results_aggregate_global = []
-    for nodes_number in [ 10, 500 ]
+    for nodes_number in [ 10, 20 ]
       for generations in [ 2, 5, 10 ]
         if generations > nodes_number-1
           next
@@ -246,5 +265,46 @@ namespace :closure_tree do
     puts "Delete all nodes..."
     ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
     puts "✓ All nodes deleted"
+  end
+
+  task test_creation: :environment do
+    csv_header = [
+      "nodes_number",
+      "closure_table_size",
+      "creation_time_ms"
+    ].join(";")
+    puts "Delete all nodes..."
+    ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
+    puts "✓ All nodes deleted"
+    nodes_number = 5000
+    @benchmark_creation_results_aggregate = []
+    index=1
+    puts "#{index}/#{nodes_number}"
+    root = Node.create!(name: "n#{index}")
+    index += 1
+    flat_tree=[]
+    flat_tree << root
+    (nodes_number-1).times do |i|
+      if index%100==0 || index==nodes_number
+        puts "#{index}/#{nodes_number}"
+      end
+      random_node = flat_tree.sample
+      @closure_table_size = ActiveRecord::Base.connection.execute("SELECT COUNT(*) FROM node_hierarchies").first["count"].to_i
+      creation_time = Benchmark.measure {
+        @new_node = Node.create!(name: "n#{index}")
+        random_node.children << @new_node
+      }.real*1000
+      flat_tree << @new_node
+      benchmark_creation_result = BenchmarkCreationResult.new(flat_tree.size, @closure_table_size, creation_time)
+      @benchmark_creation_results_aggregate << benchmark_creation_result
+      index += 1
+    end
+    root.reload
+    print_tree(root)
+    puts "Benchmark creation results:"
+    puts csv_header
+    @benchmark_creation_results_aggregate.each do |result|
+      puts result.to_csv
+    end
   end
 end
