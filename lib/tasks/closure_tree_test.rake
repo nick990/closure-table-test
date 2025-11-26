@@ -1,3 +1,4 @@
+require "gruff"
 require "benchmark"
 require_relative "../benchmark/benchmark_result"
 require_relative "../benchmark/benchmark_results_aggregate"
@@ -39,6 +40,60 @@ def print_node(node)
   puts "Subtree:"
   print_tree(node)
   puts "="*80
+end
+
+## Plots the creation results as a line chart
+# x axis: closure table size
+# y axis: creation time
+def plot_creation_results(results)
+  chart = Gruff::Line.new
+  max_closure_table_size = results.map(&:closure_table_size).max
+  max_nodes_number = results.map(&:nodes_number).max
+  chart.title = "Creation Time\nClosure Table Size: #{max_closure_table_size}\nNodes Number: #{max_nodes_number}"
+  chart.dot_radius = 1
+  chart.data(:creation_time, results.map(&:creation_time))
+  chart.title_font_size = 16
+  chart.legend_font_size = 16
+  chart.marker_font_size = 12
+  # Show only 10 labels on the x axis
+
+  total = results.length
+  count = 10
+  step  = (total - 1) / (count - 1)
+
+  labels = {}
+  (count - 1).times do |i|
+    idx = (i * step).floor
+    labels[idx] = results[idx].closure_table_size.to_s
+  end
+  labels[total - 1] = results.last.closure_table_size.to_s
+
+  chart.labels = labels
+
+  # Show stats in the legend
+  min_time = results.map(&:creation_time).min.round(3)
+  max_time = results.map(&:creation_time).max.round(3)
+  average_time = (results.map(&:creation_time).sum / results.length).round(3)
+  # Serie fittizie per legenda (un solo punto, colore trasparente)
+  transparent = "rgba(0,0,0,0)"
+
+  chart.data("Min: #{min_time}",   [ nil ])
+  chart.data("Max: #{max_time}",   [ nil ])
+  chart.data("AVG: #{average_time}", [ nil ])
+
+# Colori: primo reale, gli altri invisibili
+chart.colors = [
+  "#0077cc",   # Valori
+  transparent, # Min
+  transparent, # Max
+  transparent  # Media
+]
+
+  chart.y_axis_label = "Creation Time (ms)"
+  chart.x_axis_label = "Closure Table Size"
+  chart.write("plot.png")
+  system("open plot.png")
+  puts "✓ Plot saved to plot.png"
 end
 
 namespace :closure_tree do
@@ -184,7 +239,7 @@ namespace :closure_tree do
     puts "Delete all nodes..."
     ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
     puts "✓ All nodes deleted"
-    nodes_number = 10000
+    nodes_number = (ENV["NODES_NUMBER"] || 100).to_i
     @benchmark_creation_results_aggregate = []
     index=1
     puts "#{index}/#{nodes_number}"
@@ -208,13 +263,7 @@ namespace :closure_tree do
       index += 1
     end
     root.reload
-    print_tree(root)
-    # puts "Benchmark creation results:"
-    # @benchmark_creation_results_aggregate.each_with_index do |result, index|
-    #   if index%100==0 || index==@benchmark_creation_results_aggregate.size-1
-    #     puts result
-    #   end
-    # end
+    # print_tree(root)
     puts "Stats:"
     @average_creation_time = @benchmark_creation_results_aggregate.map(&:creation_time).sum / @benchmark_creation_results_aggregate.size
     @min_creation_time = @benchmark_creation_results_aggregate.map(&:creation_time).min
@@ -222,6 +271,8 @@ namespace :closure_tree do
     puts "Average creation time: #{@average_creation_time.round(3)} ms"
     puts "Min creation time: #{@min_creation_time.round(3)} ms"
     puts "Max creation time: #{@max_creation_time.round(3)} ms"
+
+    plot_creation_results(@benchmark_creation_results_aggregate)
 
     puts "Export results to CSV..."
     File.open("closure_tree_test_results.csv", "w") do |file|
