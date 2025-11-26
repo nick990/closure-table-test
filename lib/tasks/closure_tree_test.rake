@@ -43,25 +43,34 @@ def print_node(node)
 end
 
 ## Plots results as a line chart
-# @param results [Array<BenchmarkCreationResult>] Array of benchmark results
+# @param results [Array] Array of benchmark results
 # @param x_axis_field [Symbol] Field name to use for x-axis (e.g., :closure_table_size, :depth)
 # @param x_axis_label [String] Label for x-axis
 # @param y_axis_field [Symbol] Field name to use for y-axis (e.g., :creation_time)
 # @param y_axis_label [String] Label for y-axis
 # @param title [String, nil] Title of the chart (default: uses y_axis_label)
 # @param title_info [String, nil] Additional info for title (e.g., "Closure Table Size: X" or "Depth: X")
+# @param nodes_number [Integer, nil] Number of nodes (only meaningful for creation results)
+# @param output_path [String] Path where to save the plot file (default: "plot.png")
+# @yield [result] Optional block to calculate y-axis value from result
 # @return [void]
-def plot_results(results, x_axis_field:, x_axis_label:, y_axis_field:, y_axis_label:, title: nil, title_info: nil)
+def plot_results(results, x_axis_field:, x_axis_label:, y_axis_field:, y_axis_label:, title: nil, title_info: nil, nodes_number: nil, output_path: "plot.png", &y_value_proc)
   chart = Gruff::Line.new(1200)
   max_x_value = results.map(&x_axis_field).max
-  max_nodes_number = results.map(&:nodes_number).max
 
-  title_info ||= "#{x_axis_label}: #{max_x_value}"
   chart_title = title || y_axis_label
-  chart.title = "#{chart_title}\n#{title_info}\nNodes Number: #{max_nodes_number}"
+  title_parts = [ chart_title ]
+  title_parts << title_info if title_info
+  title_parts << "Nodes Number: #{nodes_number}" if nodes_number
+  chart.title = title_parts.join("\n")
 
   chart.dot_radius = 1
-  chart.data(y_axis_field, results.map(&y_axis_field))
+  y_values = if block_given?
+    results.map(&y_value_proc)
+  else
+    results.map(&y_axis_field)
+  end
+  chart.data(y_axis_field, y_values)
   chart.title_font_size = 16
   chart.legend_font_size = 16
   chart.marker_font_size = 12
@@ -81,7 +90,6 @@ def plot_results(results, x_axis_field:, x_axis_label:, y_axis_field:, y_axis_la
   chart.labels = labels
 
   # Show stats in the legend
-  y_values = results.map(&y_axis_field)
   min_value = y_values.min.round(3)
   max_value = y_values.max.round(3)
   average_value = (y_values.sum / results.length).round(3)
@@ -102,9 +110,9 @@ def plot_results(results, x_axis_field:, x_axis_label:, y_axis_field:, y_axis_la
 
   chart.y_axis_label = y_axis_label
   chart.x_axis_label = x_axis_label
-  chart.write("plot.png")
-  system("open plot.png")
-  puts "✓ Plot saved to plot.png"
+  chart.write(output_path)
+  system("open #{output_path}")
+  puts "✓ Plot saved to #{output_path}"
 end
 
 
@@ -182,7 +190,7 @@ namespace :closure_tree do
       puts "Create tree with #{nodes_number} nodes and #{generations} generations..."
       @root = create_tree(nodes_number, generations)
       puts "✓ Tree created successfully:"
-      print_tree(@root)
+      # print_tree(@root)
 
 
       puts "Deepest node:"
@@ -220,8 +228,6 @@ namespace :closure_tree do
     puts "="*80 + "\n"
 
     @benchmark_results_aggregate_global = []
-    # for nodes_number in [ 0, 20, 50, 100, 500, 1000, 5000 ]
-    #   for generations in [ 2, 5, 10, 20, 50, 100, 200 ]
     for nodes_number in [ 50, 100, 500 ]
       for generations in [ 10, 20, 100, 200 ]
         if generations > nodes_number-1
@@ -232,15 +238,55 @@ namespace :closure_tree do
       end
     end
 
+
     plot_results(
       @benchmark_results_aggregate_global,
       x_axis_field: :closure_table_size,
       x_axis_label: "Closure Table Size",
-      y_axis_field: :delete_time,
-      y_axis_label: "Delete Time (ms)",
+      y_axis_field: :delete_time_sec,
+      y_axis_label: "Delete Time (sec)",
       title: "Delete Time",
-      title_info: "Closure Table Size: #{@benchmark_results_aggregate_global.map(&:closure_table_size).max}"
-    )
+      output_path: "delete_time_sec.png"
+    ) { |result| result.delete_time / 1000.0 }
+
+    plot_results(
+      @benchmark_results_aggregate_global,
+      x_axis_field: :closure_table_size,
+      x_axis_label: "Closure Table Size",
+      y_axis_field: :root_time,
+      y_axis_label: "Root Time (ms)",
+      title: "Root Time",
+      output_path: "root_time.png"
+    ) { |result| result.max_time(:root_time).root_time }
+
+    plot_results(
+      @benchmark_results_aggregate_global,
+      x_axis_field: :closure_table_size,
+      x_axis_label: "Closure Table Size",
+      y_axis_field: :self_and_ancestors_time,
+      y_axis_label: "Self and Ancestors Time (ms)",
+      title: "Self and Ancestors Time",
+      output_path: "self_and_ancestors_time.png"
+    ) { |result| result.max_time(:self_and_ancestors_time).self_and_ancestors_time }
+
+    plot_results(
+      @benchmark_results_aggregate_global,
+      x_axis_field: :closure_table_size,
+      x_axis_label: "Closure Table Size",
+      y_axis_field: :self_and_descendants_time,
+      y_axis_label: "Self and Descendants Time (ms)",
+      title: "Self and Descendants Time",
+      output_path: "self_and_descendants_time.png"
+    ) { |result| result.max_time(:self_and_descendants_time).self_and_descendants_time }
+
+    max_root_time = @benchmark_results_aggregate_global.map { |result| result.max_time(:root_time).root_time }.max
+    max_self_and_descendants_time = @benchmark_results_aggregate_global.map { |result| result.max_time(:self_and_descendants_time).self_and_descendants_time }.max
+    max_self_and_ancestors_time = @benchmark_results_aggregate_global.map { |result| result.max_time(:self_and_ancestors_time).self_and_ancestors_time }.max
+    puts "Max root time: #{max_root_time.round(3)} ms"
+    puts "Max self and descendants time: #{max_self_and_descendants_time.round(3)} ms"
+    puts "Max self and ancestors time: #{max_self_and_ancestors_time.round(3)} ms"
+
+
     puts "Export results to CSV..."
     File.open("closure_tree_test_results.csv", "w") do |file|
       file.write(csv_header + "\n")
@@ -307,7 +353,8 @@ namespace :closure_tree do
       x_axis_label: "Closure Table Size",
       y_axis_field: :creation_time,
       y_axis_label: "Creation Time (ms)",
-      title_info: "Closure Table Size: #{@benchmark_creation_results_aggregate.map(&:closure_table_size).max}"
+      title_info: "Closure Table Size: #{@benchmark_creation_results_aggregate.map(&:closure_table_size).max}",
+      nodes_number: nodes_number
     )
 
     puts "Export results to CSV..."
@@ -366,7 +413,8 @@ namespace :closure_tree do
       x_axis_label: "Depth",
       y_axis_field: :creation_time,
       y_axis_label: "Creation Time (ms)",
-      title_info: "Depth: #{@benchmark_creation_results_aggregate.map(&:depth).max}"
+      title_info: "Depth: #{@benchmark_creation_results_aggregate.map(&:depth).max}",
+      nodes_number: @benchmark_creation_results_aggregate.map(&:nodes_number).max
     )
 
     puts "Export results to CSV..."
