@@ -46,7 +46,7 @@ end
 # x axis: closure table size
 # y axis: creation time
 def plot_creation_results(results)
-  chart = Gruff::Line.new
+  chart = Gruff::Line.new(1200)
   max_closure_table_size = results.map(&:closure_table_size).max
   max_nodes_number = results.map(&:nodes_number).max
   chart.title = "Creation Time\nClosure Table Size: #{max_closure_table_size}\nNodes Number: #{max_nodes_number}"
