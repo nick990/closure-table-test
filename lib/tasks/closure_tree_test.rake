@@ -96,6 +96,60 @@ chart.colors = [
   puts "✓ Plot saved to plot.png"
 end
 
+## Plots the creation results as a line chart
+# x axis: depth
+# y axis: creation time
+def plot_creation_results_by_depth(results)
+  chart = Gruff::Line.new(1200)
+  max_depth = results.map(&:depth).max
+  max_nodes_number = results.map(&:nodes_number).max
+  chart.title = "Creation Time\nDepth: #{max_depth}\nNodes Number: #{max_nodes_number}"
+  chart.dot_radius = 1
+  chart.data(:creation_time, results.map(&:creation_time))
+  chart.title_font_size = 16
+  chart.legend_font_size = 16
+  chart.marker_font_size = 12
+  # Show only 10 labels on the x axis
+
+  total = results.length
+  count = 10
+  step  = (total - 1) / (count - 1)
+
+  labels = {}
+  (count - 1).times do |i|
+    idx = (i * step).floor
+    labels[idx] = results[idx].depth.to_s
+  end
+  labels[total - 1] = results.last.depth.to_s
+
+  chart.labels = labels
+
+  # Show stats in the legend
+  min_time = results.map(&:creation_time).min.round(3)
+  max_time = results.map(&:creation_time).max.round(3)
+  average_time = (results.map(&:creation_time).sum / results.length).round(3)
+  # Serie fittizie per legenda (un solo punto, colore trasparente)
+  transparent = "rgba(0,0,0,0)"
+
+  chart.data("Min: #{min_time}",   [ nil ])
+  chart.data("Max: #{max_time}",   [ nil ])
+  chart.data("AVG: #{average_time}", [ nil ])
+
+# Colori: primo reale, gli altri invisibili
+chart.colors = [
+  "#0077cc",   # Valori
+  transparent, # Min
+  transparent, # Max
+  transparent  # Media
+]
+
+  chart.y_axis_label = "Creation Time (ms)"
+  chart.x_axis_label = "Depth"
+  chart.write("plot.png")
+  system("open plot.png")
+  puts "✓ Plot saved to plot.png"
+end
+
 namespace :closure_tree do
   desc "Test the closure_tree gem by creating a tree and verifying the navigation methods with timing measurements. Parameters: nodes_number (default: 50), generations (default: 4)"
   task test: :environment do
@@ -234,6 +288,7 @@ namespace :closure_tree do
     csv_header = [
       "nodes_number",
       "closure_table_size",
+      "depth",
       "creation_time_ms"
     ].join(";")
     puts "Delete all nodes..."
@@ -258,7 +313,7 @@ namespace :closure_tree do
         random_node.children << @new_node
       }.real*1000
       flat_tree << @new_node
-      benchmark_creation_result = BenchmarkCreationResult.new(flat_tree.size, @closure_table_size, creation_time)
+      benchmark_creation_result = BenchmarkCreationResult.new(flat_tree.size, @closure_table_size, @new_node.depth, creation_time)
       @benchmark_creation_results_aggregate << benchmark_creation_result
       index += 1
     end
@@ -273,6 +328,55 @@ namespace :closure_tree do
     puts "Max creation time: #{@max_creation_time.round(3)} ms"
 
     plot_creation_results(@benchmark_creation_results_aggregate)
+
+    puts "Export results to CSV..."
+    File.open("closure_tree_test_results.csv", "w") do |file|
+      file.write(csv_header + "\n")
+      @benchmark_creation_results_aggregate.each do |result|
+        file.write(result.to_csv + "\n")
+      end
+    end
+    puts "✓ Results exported to closure_tree_test_results.csv"
+  end
+
+  task test_creation_by_depth: :environment do
+    csv_header = [
+      "nodes_number",
+      "closure_table_size",
+      "depth",
+      "creation_time_ms"
+    ].join(";")
+    puts "Delete all nodes..."
+    ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
+    puts "✓ All nodes deleted"
+    depth = (ENV["DEPTH"] || 4).to_i
+    @benchmark_creation_results_aggregate = []
+    d=0
+    puts "0/#{depth}"
+    root = Node.create!(name: "n0")
+    last_node=root
+    (depth).times do |i|
+      d += 1
+      puts "#{d}/#{depth}"
+      @creation_time = Benchmark.measure {
+      @new_node = Node.create!(name: "n#{d}")
+      last_node.children << @new_node
+      }.real*1000
+      last_node = @new_node
+      @closure_table_size = ActiveRecord::Base.connection.execute("SELECT COUNT(*) FROM node_hierarchies").first["count"].to_i
+      benchmark_creation_result = BenchmarkCreationResult.new(d+1, @closure_table_size, @new_node.depth, @creation_time)
+      @benchmark_creation_results_aggregate << benchmark_creation_result
+    end
+    root.reload
+    puts "Stats:"
+    @average_creation_time = @benchmark_creation_results_aggregate.map(&:creation_time).sum / @benchmark_creation_results_aggregate.size
+    @min_creation_time = @benchmark_creation_results_aggregate.map(&:creation_time).min
+    @max_creation_time = @benchmark_creation_results_aggregate.map(&:creation_time).max
+    puts "Average creation time: #{@average_creation_time.round(3)} ms"
+    puts "Min creation time: #{@min_creation_time.round(3)} ms"
+    puts "Max creation time: #{@max_creation_time.round(3)} ms"
+
+    plot_creation_results_by_depth(@benchmark_creation_results_aggregate)
 
     puts "Export results to CSV..."
     File.open("closure_tree_test_results.csv", "w") do |file|
