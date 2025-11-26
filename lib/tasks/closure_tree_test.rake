@@ -42,22 +42,26 @@ def print_node(node)
   puts "="*80
 end
 
-## Plots the creation results as a line chart
+## Plots results as a line chart
 # @param results [Array<BenchmarkCreationResult>] Array of benchmark results
 # @param x_axis_field [Symbol] Field name to use for x-axis (e.g., :closure_table_size, :depth)
 # @param x_axis_label [String] Label for x-axis
+# @param y_axis_field [Symbol] Field name to use for y-axis (e.g., :creation_time)
+# @param y_axis_label [String] Label for y-axis
+# @param title [String, nil] Title of the chart (default: uses y_axis_label)
 # @param title_info [String, nil] Additional info for title (e.g., "Closure Table Size: X" or "Depth: X")
 # @return [void]
-def plot_creation_results(results, x_axis_field:, x_axis_label:, title_info: nil)
+def plot_results(results, x_axis_field:, x_axis_label:, y_axis_field:, y_axis_label:, title: nil, title_info: nil)
   chart = Gruff::Line.new(1200)
   max_x_value = results.map(&x_axis_field).max
   max_nodes_number = results.map(&:nodes_number).max
 
   title_info ||= "#{x_axis_label}: #{max_x_value}"
-  chart.title = "Creation Time\n#{title_info}\nNodes Number: #{max_nodes_number}"
+  chart_title = title || y_axis_label
+  chart.title = "#{chart_title}\n#{title_info}\nNodes Number: #{max_nodes_number}"
 
   chart.dot_radius = 1
-  chart.data(:creation_time, results.map(&:creation_time))
+  chart.data(y_axis_field, results.map(&y_axis_field))
   chart.title_font_size = 16
   chart.legend_font_size = 16
   chart.marker_font_size = 12
@@ -77,15 +81,16 @@ def plot_creation_results(results, x_axis_field:, x_axis_label:, title_info: nil
   chart.labels = labels
 
   # Show stats in the legend
-  min_time = results.map(&:creation_time).min.round(3)
-  max_time = results.map(&:creation_time).max.round(3)
-  average_time = (results.map(&:creation_time).sum / results.length).round(3)
+  y_values = results.map(&y_axis_field)
+  min_value = y_values.min.round(3)
+  max_value = y_values.max.round(3)
+  average_value = (y_values.sum / results.length).round(3)
   # Serie fittizie per legenda (un solo punto, colore trasparente)
   transparent = "rgba(0,0,0,0)"
 
-  chart.data("Min: #{min_time}",   [ nil ])
-  chart.data("Max: #{max_time}",   [ nil ])
-  chart.data("AVG: #{average_time}", [ nil ])
+  chart.data("Min: #{min_value}",   [ nil ])
+  chart.data("Max: #{max_value}",   [ nil ])
+  chart.data("AVG: #{average_value}", [ nil ])
 
   # Colori: primo reale, gli altri invisibili
   chart.colors = [
@@ -95,7 +100,7 @@ def plot_creation_results(results, x_axis_field:, x_axis_label:, title_info: nil
     transparent  # Media
   ]
 
-  chart.y_axis_label = "Creation Time (ms)"
+  chart.y_axis_label = y_axis_label
   chart.x_axis_label = x_axis_label
   chart.write("plot.png")
   system("open plot.png")
@@ -173,6 +178,7 @@ namespace :closure_tree do
     # Elimina l'albero
     # Torna un oggetto BenchmarkResultsAggregate
     def test_tree(nodes_number, generations)
+      GC.disable
       puts "Create tree with #{nodes_number} nodes and #{generations} generations..."
       @root = create_tree(nodes_number, generations)
       puts "✓ Tree created successfully:"
@@ -214,8 +220,10 @@ namespace :closure_tree do
     puts "="*80 + "\n"
 
     @benchmark_results_aggregate_global = []
-    for nodes_number in [ 10, 20 ]
-      for generations in [ 2, 5, 10 ]
+    # for nodes_number in [ 0, 20, 50, 100, 500, 1000, 5000 ]
+    #   for generations in [ 2, 5, 10, 20, 50, 100, 200 ]
+    for nodes_number in [ 50, 100, 500 ]
+      for generations in [ 10, 20, 100, 200 ]
         if generations > nodes_number-1
           next
         end
@@ -224,6 +232,15 @@ namespace :closure_tree do
       end
     end
 
+    plot_results(
+      @benchmark_results_aggregate_global,
+      x_axis_field: :closure_table_size,
+      x_axis_label: "Closure Table Size",
+      y_axis_field: :delete_time,
+      y_axis_label: "Delete Time (ms)",
+      title: "Delete Time",
+      title_info: "Closure Table Size: #{@benchmark_results_aggregate_global.map(&:closure_table_size).max}"
+    )
     puts "Export results to CSV..."
     File.open("closure_tree_test_results.csv", "w") do |file|
       file.write(csv_header + "\n")
@@ -232,6 +249,8 @@ namespace :closure_tree do
       end
     end
     puts "✓ Results exported to closure_tree_test_results.csv"
+
+
 
     puts "Delete all nodes..."
     ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
@@ -282,10 +301,12 @@ namespace :closure_tree do
     puts "Min creation time: #{@min_creation_time.round(3)} ms"
     puts "Max creation time: #{@max_creation_time.round(3)} ms"
 
-    plot_creation_results(
+    plot_results(
       @benchmark_creation_results_aggregate,
       x_axis_field: :closure_table_size,
       x_axis_label: "Closure Table Size",
+      y_axis_field: :creation_time,
+      y_axis_label: "Creation Time (ms)",
       title_info: "Closure Table Size: #{@benchmark_creation_results_aggregate.map(&:closure_table_size).max}"
     )
 
@@ -339,10 +360,12 @@ namespace :closure_tree do
     puts "Min creation time: #{@min_creation_time.round(3)} ms"
     puts "Max creation time: #{@max_creation_time.round(3)} ms"
 
-    plot_creation_results(
+    plot_results(
       @benchmark_creation_results_aggregate,
       x_axis_field: :depth,
       x_axis_label: "Depth",
+      y_axis_field: :creation_time,
+      y_axis_label: "Creation Time (ms)",
       title_info: "Depth: #{@benchmark_creation_results_aggregate.map(&:depth).max}"
     )
 
