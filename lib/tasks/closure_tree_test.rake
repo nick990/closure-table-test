@@ -43,20 +43,26 @@ def print_node(node)
 end
 
 ## Plots the creation results as a line chart
-# x axis: closure table size
-# y axis: creation time
-def plot_creation_results(results)
+# @param results [Array<BenchmarkCreationResult>] Array of benchmark results
+# @param x_axis_field [Symbol] Field name to use for x-axis (e.g., :closure_table_size, :depth)
+# @param x_axis_label [String] Label for x-axis
+# @param title_info [String, nil] Additional info for title (e.g., "Closure Table Size: X" or "Depth: X")
+# @return [void]
+def plot_creation_results(results, x_axis_field:, x_axis_label:, title_info: nil)
   chart = Gruff::Line.new(1200)
-  max_closure_table_size = results.map(&:closure_table_size).max
+  max_x_value = results.map(&x_axis_field).max
   max_nodes_number = results.map(&:nodes_number).max
-  chart.title = "Creation Time\nClosure Table Size: #{max_closure_table_size}\nNodes Number: #{max_nodes_number}"
+
+  title_info ||= "#{x_axis_label}: #{max_x_value}"
+  chart.title = "Creation Time\n#{title_info}\nNodes Number: #{max_nodes_number}"
+
   chart.dot_radius = 1
   chart.data(:creation_time, results.map(&:creation_time))
   chart.title_font_size = 16
   chart.legend_font_size = 16
   chart.marker_font_size = 12
-  # Show only 10 labels on the x axis
 
+  # Show only 10 labels on the x axis
   total = results.length
   count = 10
   step  = (total - 1) / (count - 1)
@@ -64,9 +70,9 @@ def plot_creation_results(results)
   labels = {}
   (count - 1).times do |i|
     idx = (i * step).floor
-    labels[idx] = results[idx].closure_table_size.to_s
+    labels[idx] = results[idx].public_send(x_axis_field).to_s
   end
-  labels[total - 1] = results.last.closure_table_size.to_s
+  labels[total - 1] = results.last.public_send(x_axis_field).to_s
 
   chart.labels = labels
 
@@ -81,74 +87,22 @@ def plot_creation_results(results)
   chart.data("Max: #{max_time}",   [ nil ])
   chart.data("AVG: #{average_time}", [ nil ])
 
-# Colori: primo reale, gli altri invisibili
-chart.colors = [
-  "#0077cc",   # Valori
-  transparent, # Min
-  transparent, # Max
-  transparent  # Media
-]
+  # Colori: primo reale, gli altri invisibili
+  chart.colors = [
+    "#0077cc",   # Valori
+    transparent, # Min
+    transparent, # Max
+    transparent  # Media
+  ]
 
   chart.y_axis_label = "Creation Time (ms)"
-  chart.x_axis_label = "Closure Table Size"
+  chart.x_axis_label = x_axis_label
   chart.write("plot.png")
   system("open plot.png")
   puts "✓ Plot saved to plot.png"
 end
 
-## Plots the creation results as a line chart
-# x axis: depth
-# y axis: creation time
-def plot_creation_results_by_depth(results)
-  chart = Gruff::Line.new(1200)
-  max_depth = results.map(&:depth).max
-  max_nodes_number = results.map(&:nodes_number).max
-  chart.title = "Creation Time\nDepth: #{max_depth}\nNodes Number: #{max_nodes_number}"
-  chart.dot_radius = 1
-  chart.data(:creation_time, results.map(&:creation_time))
-  chart.title_font_size = 16
-  chart.legend_font_size = 16
-  chart.marker_font_size = 12
-  # Show only 10 labels on the x axis
 
-  total = results.length
-  count = 10
-  step  = (total - 1) / (count - 1)
-
-  labels = {}
-  (count - 1).times do |i|
-    idx = (i * step).floor
-    labels[idx] = results[idx].depth.to_s
-  end
-  labels[total - 1] = results.last.depth.to_s
-
-  chart.labels = labels
-
-  # Show stats in the legend
-  min_time = results.map(&:creation_time).min.round(3)
-  max_time = results.map(&:creation_time).max.round(3)
-  average_time = (results.map(&:creation_time).sum / results.length).round(3)
-  # Serie fittizie per legenda (un solo punto, colore trasparente)
-  transparent = "rgba(0,0,0,0)"
-
-  chart.data("Min: #{min_time}",   [ nil ])
-  chart.data("Max: #{max_time}",   [ nil ])
-  chart.data("AVG: #{average_time}", [ nil ])
-
-# Colori: primo reale, gli altri invisibili
-chart.colors = [
-  "#0077cc",   # Valori
-  transparent, # Min
-  transparent, # Max
-  transparent  # Media
-]
-
-  chart.y_axis_label = "Creation Time (ms)"
-  chart.x_axis_label = "Depth"
-  chart.write("plot.png")
-  system("open plot.png")
-  puts "✓ Plot saved to plot.png"
-end
 
 namespace :closure_tree do
   desc "Test the closure_tree gem by creating a tree and verifying the navigation methods with timing measurements. Parameters: nodes_number (default: 50), generations (default: 4)"
@@ -285,6 +239,7 @@ namespace :closure_tree do
   end
 
   task test_creation: :environment do
+    GC.disable
     csv_header = [
       "nodes_number",
       "closure_table_size",
@@ -327,7 +282,12 @@ namespace :closure_tree do
     puts "Min creation time: #{@min_creation_time.round(3)} ms"
     puts "Max creation time: #{@max_creation_time.round(3)} ms"
 
-    plot_creation_results(@benchmark_creation_results_aggregate)
+    plot_creation_results(
+      @benchmark_creation_results_aggregate,
+      x_axis_field: :closure_table_size,
+      x_axis_label: "Closure Table Size",
+      title_info: "Closure Table Size: #{@benchmark_creation_results_aggregate.map(&:closure_table_size).max}"
+    )
 
     puts "Export results to CSV..."
     File.open("closure_tree_test_results.csv", "w") do |file|
@@ -340,6 +300,7 @@ namespace :closure_tree do
   end
 
   task test_creation_by_depth: :environment do
+    GC.disable
     csv_header = [
       "nodes_number",
       "closure_table_size",
@@ -378,7 +339,12 @@ namespace :closure_tree do
     puts "Min creation time: #{@min_creation_time.round(3)} ms"
     puts "Max creation time: #{@max_creation_time.round(3)} ms"
 
-    plot_creation_results_by_depth(@benchmark_creation_results_aggregate)
+    plot_creation_results(
+      @benchmark_creation_results_aggregate,
+      x_axis_field: :depth,
+      x_axis_label: "Depth",
+      title_info: "Depth: #{@benchmark_creation_results_aggregate.map(&:depth).max}"
+    )
 
     puts "Export results to CSV..."
     File.open("closure_tree_test_results.csv", "w") do |file|
