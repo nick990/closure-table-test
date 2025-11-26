@@ -115,6 +115,52 @@ def plot_results(results, x_axis_field:, x_axis_label:, y_axis_field:, y_axis_la
   puts "✓ Plot saved to #{output_path}"
 end
 
+# Crea un albero dato numero nodo e generazioni
+# Calcola il benchmark per il nodo più profondo
+# Calcola il benchmark per tutti i nodi
+# Elimina l'albero
+# Torna un oggetto BenchmarkResultsAggregate
+def create_tree_by_nodes_and_generations(nodes_number, generations)
+  if nodes_number < generations + 1
+    raise ArgumentError, "Nodes number (#{nodes_number}) must be at least #{generations + 1} to create #{generations} generations"
+  end
+  index=1
+  puts "#{index}/#{nodes_number}"
+  root = Node.create!(name: "n#{index}")
+  index += 1
+  last_node=root
+  flat_tree=[]
+  flat_tree << root
+  # Creo i nodi minimi per ogni generazione
+  (generations).times do |i|
+    if index%100==0 || index==nodes_number
+      puts "#{index}/#{nodes_number}"
+    end
+    new_node = Node.create!(name: "n#{index}")
+    last_node.children << new_node
+    last_node = new_node
+    index += 1
+    if new_node.depth < generations
+      flat_tree << new_node
+    end
+  end
+  remaining_nodes=nodes_number-(generations+1)
+  remaining_nodes.times do |i|
+    if index%100==0 || index==nodes_number
+      puts "#{index}/#{nodes_number}"
+    end
+    new_node = Node.create!(name: "n#{index}")
+    random_node = flat_tree.sample
+    random_node.children << new_node
+    index += 1
+    if new_node.depth < generations
+      flat_tree << new_node
+    end
+  end
+  root.reload
+  root
+end
+
 
 
 namespace :closure_tree do
@@ -138,59 +184,12 @@ namespace :closure_tree do
       ].join(";")
     end
 
-    def create_tree(nodes_number, generations)
-      if nodes_number < generations + 1
-        raise ArgumentError, "Nodes number (#{nodes_number}) must be at least #{generations + 1} to create #{generations} generations"
-      end
-      index=1
-      puts "#{index}/#{nodes_number}"
-      root = Node.create!(name: "n#{index}")
-      index += 1
-      last_node=root
-      flat_tree=[]
-      flat_tree << root
-      # Creo i nodi minimi per ogni generazione
-      (generations).times do |i|
-        if index%100==0 || index==nodes_number
-          puts "#{index}/#{nodes_number}"
-        end
-        new_node = Node.create!(name: "n#{index}")
-        last_node.children << new_node
-        last_node = new_node
-        index += 1
-        if new_node.depth < generations
-          flat_tree << new_node
-        end
-      end
-      remaining_nodes=nodes_number-(generations+1)
-      remaining_nodes.times do |i|
-        if index%100==0 || index==nodes_number
-          puts "#{index}/#{nodes_number}"
-        end
-        new_node = Node.create!(name: "n#{index}")
-        random_node = flat_tree.sample
-        random_node.children << new_node
-        index += 1
-        if new_node.depth < generations
-          flat_tree << new_node
-        end
-      end
-      root.reload
-      root
-    end
-
-
-    # Crea un albero dato numero nodo e generazioni
-    # Calcola il benchmark per il nodo più profondo
-    # Calcola il benchmark per tutti i nodi
-    # Elimina l'albero
-    # Torna un oggetto BenchmarkResultsAggregate
     def test_tree(nodes_number, generations)
       GC.disable
       puts "Create tree with #{nodes_number} nodes and #{generations} generations..."
-      @root = create_tree(nodes_number, generations)
+      @root = create_tree_by_nodes_and_generations(nodes_number, generations)
       puts "✓ Tree created successfully:"
-      # print_tree(@root)
+      print_tree(@root)
 
 
       puts "Deepest node:"
@@ -213,16 +212,12 @@ namespace :closure_tree do
       benchmark_results_aggregate.print_stats("root", :root_time)
       benchmark_results_aggregate.print_stats("self_and_descendants", :self_and_descendants_time)
       benchmark_results_aggregate.print_stats("self_and_ancestors", :self_and_ancestors_time)
-
-      puts "Delete tree..."
+      puts "Delete root..."
       destroy_time = Benchmark.measure { @root.destroy }.real*1000
-      puts "✓ Tree deleted in #{(destroy_time).round(3)} ms"
+      puts "✓ Root deleted in #{(destroy_time).round(3)} ms"
       benchmark_results_aggregate.delete_time = destroy_time
-
       benchmark_results_aggregate
     end
-
-
     puts "\n" + "="*80
     puts "TEST CLOSURE_TREE"
     puts "="*80 + "\n"
@@ -233,6 +228,9 @@ namespace :closure_tree do
         if generations > nodes_number-1
           next
         end
+        puts "Delete all nodes..."
+        ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
+        puts "✓ All nodes deleted"
         benchmark_results_aggregate = test_tree(nodes_number, generations)
         @benchmark_results_aggregate_global << benchmark_results_aggregate
       end
@@ -298,9 +296,9 @@ namespace :closure_tree do
 
 
 
-    puts "Delete all nodes..."
-    ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
-    puts "✓ All nodes deleted"
+    # puts "Delete all nodes..."
+    # ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
+    # puts "✓ All nodes deleted"
   end
 
   task test_creation: :environment do
