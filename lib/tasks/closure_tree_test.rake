@@ -357,7 +357,9 @@ namespace :closure_tree do
     last_node=root
     (depth).times do |i|
       d += 1
-      puts "#{d}/#{depth}"
+      if d%100==0 || d==depth
+        puts "#{d}/#{depth}"
+      end
       @creation_time = Benchmark.measure {
       @new_node = Node.create!(name: "n#{d}")
       last_node.children << @new_node
