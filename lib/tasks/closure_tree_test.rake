@@ -296,9 +296,9 @@ namespace :closure_tree do
 
 
 
-    # puts "Delete all nodes..."
-    # ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
-    # puts "✓ All nodes deleted"
+    puts "Delete all nodes..."
+    ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
+    puts "✓ All nodes deleted"
   end
 
   task test_creation: :environment do
@@ -367,12 +367,7 @@ namespace :closure_tree do
 
   task test_creation_by_depth: :environment do
     GC.disable
-    csv_header = [
-      "nodes_number",
-      "closure_table_size",
-      "depth",
-      "creation_time_ms"
-    ].join(";")
+
     puts "Delete all nodes..."
     ActiveRecord::Base.connection.execute("TRUNCATE TABLE node_hierarchies, nodes RESTART IDENTITY CASCADE")
     puts "✓ All nodes deleted"
@@ -414,14 +409,5 @@ namespace :closure_tree do
       title_info: "Depth: #{@benchmark_creation_results_aggregate.map(&:depth).max}",
       nodes_number: @benchmark_creation_results_aggregate.map(&:nodes_number).max
     )
-
-    puts "Export results to CSV..."
-    File.open("closure_tree_test_results.csv", "w") do |file|
-      file.write(csv_header + "\n")
-      @benchmark_creation_results_aggregate.each do |result|
-        file.write(result.to_csv + "\n")
-      end
-    end
-    puts "✓ Results exported to closure_tree_test_results.csv"
   end
 end
